@@ -7,9 +7,6 @@ the comp. The After Effects counterpart of the Blender / Maya "Shot Info" tool.
 
 Current build: **`jd_ShotInfoPanel_forAfterEffects_v1_0_0.jsx`** (version 1.0.0).
 
-> The `_forAfterEffects` tag and version suffix are per-DCC dev tracking; the
-> panel itself shows as **"Shot Info"** in After Effects.
-
 ![Panel guide](docs/panel-guide.png)
 
 ## Features
