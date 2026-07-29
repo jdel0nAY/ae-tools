@@ -17,8 +17,8 @@ the same thing across files.
 - After Effects (tested on 2026)
 - The **EXtractoR** effect, which ships with After Effects as part of ProEXR —
   only needed for the multi-layer EXR workflow
-- A small library of animation presets you create once; see
-  [Preset library](#preset-library) below
+- A library of animation presets, twenty of which are included in `presets/`;
+  see [Preset library](#preset-library) below
 
 ## Install
 
@@ -132,17 +132,28 @@ For Cryptomatte AOVs, save a **Cryptomatte** effect as the preset instead of
 EXtractoR. The script doesn't care what's inside the `.ffx` — it just applies it
 — so the crypto passes end up displaying properly rather than as raw ID hashes.
 
-### Bundling your presets with this script
+### Included library
 
-The `presets/` folder here is a place to keep them alongside the script. To copy
-what you already have out of After Effects' User Presets folder:
+Twenty presets ship in [`presets/`](presets/) covering an Arnold-style AOV set —
+19 EXtractoR and one Cryptomatte:
+
+```
+DiffuseLighting  SpecularLighting  GI  Reflections  Refractions
+Transmission     Opacity           VolumeLighting   VolumeFogEmission
+VolumeFogTint    N  P  Z  UV       Normalized       ShadingPoints
+EdgeLength       PuzzleMatte       PuzzleMatte1     Crypto_Object
+```
+
+Point the script's preset folder at `presets/`, or copy them into After Effects'
+User Presets folder and leave the default path alone — either works. See
+[`presets/README.md`](presets/README.md) for the full inventory and how to add
+your own.
+
+To copy presets you make later out of After Effects:
 
 ```powershell
 Copy-Item "$env:USERPROFILE\Documents\Adobe\After Effects 2026\User Presets\extractAOV_*.ffx" -Destination ".\presets\"
 ```
-
-Then point the script's preset folder at `presets/`, or leave it pointing at
-User Presets — either works.
 
 ---
 
