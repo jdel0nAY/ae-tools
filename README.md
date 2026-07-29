@@ -14,11 +14,6 @@ and open it from the **Window** menu. See each tool's own README for usage.
 
 <!-- Add new tools as rows above. -->
 
-## Naming & versioning
-
-Tools follow `jd_<ToolName>_forAfterEffects`, and each build's file carries a
-version suffix using underscores (e.g. `_v1_0_0.jsx`).
-
 ## License
 
 [MIT](LICENSE) — applies to everything in this repository unless a subfolder
