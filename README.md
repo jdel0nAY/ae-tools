@@ -1,6 +1,6 @@
 # aftereffects_tools
 
-Public collection of After Effects scripts and panels by Jean Delaunay.
+Public collection of After Effects scripts and panels. Some by myself, some with ai help.
 
 Each tool lives in its own subfolder and is self-contained. **Panels** go in After
 Effects' `Scripts/ScriptUI Panels/` folder — restart, then open from the
