@@ -17,19 +17,19 @@ the same thing across files.
 - After Effects (tested on 2026)
 - The **EXtractoR** effect, which ships with After Effects as part of ProEXR —
   only needed for the multi-layer EXR workflow
-- A library of animation presets, twenty of which are included in `presets/`;
-  see [Preset library](#preset-library) below
+- A library of animation presets; 129 are included in `presets/`, see
+  [Preset library](#preset-library) below
 
 ## Install
 
-Copy `jd_AOVcontactsheet_v1_0_0.jsx` into your After Effects scripts folder:
+Copy `jd_AOVcontactsheet_v1_1_0.jsx` into your After Effects scripts folder:
 
 ```
 Windows   C:\Program Files\Adobe\Adobe After Effects <version>\Support Files\Scripts\
 macOS     /Applications/Adobe After Effects <version>/Scripts/
 ```
 
-Then run it from **File → Scripts → jd_AOVcontactsheet_v1_0_0.jsx**.
+Then run it from **File → Scripts → jd_AOVcontactsheet_v1_1_0.jsx**.
 
 Dropping it in `Scripts/ScriptUI Panels/` instead makes it available from the
 **Window** menu.
@@ -68,12 +68,36 @@ channels are then grouped into AOVs:
 | `crypto_object` + `crypto_object00/01/02` | one `crypto_object` cell |
 | `subimage03.DiffuseLighting.R/G/B` | one `DiffuseLighting` cell — the multi-part prefix is stripped |
 | `subimage00.R/G/B/A` | `Beauty` — a part holding bare RGBA is the beauty pass |
+| `ViewLayer.DiffDir.R/G/B` | one `DiffDir` cell — a layer prefix shared by every AOV is dropped |
+| `CryptoObject00/01/02` (no base layer) | one `CryptoObject` cell |
 
-Multi-part EXRs carry a part name on every channel, so an AOV would otherwise
-read as `subimage03.DiffuseLighting`. That prefix is stripped from the cell name —
-unless removing it would make two AOVs collide — which keeps labels readable and
-lets a preset named after the AOV alone match. The full channel base is recorded
-in each layer's comment.
+Two kinds of redundant prefix are removed from cell names, each only when every
+name stays unique afterwards. Multi-part EXRs carry a part name on every channel,
+so an AOV would otherwise read as `subimage03.DiffuseLighting`. And some renderers
+put a layer name in front of everything — Blender writes `ViewLayer.DiffDir.R` —
+which is dropped when all AOVs share it. Comparison is by whole dot-separated
+segment, never partial strings. The full channel base is recorded in each layer's
+comment.
+
+Auto-detection can only act on a prefix that every AOV shares, and it stays silent
+when a file has one AOV or when stripping would make two names collide. For
+anything it misses, set **Strip prefix from AOV names** in the configuration
+window — a literal or a regex, anchored at the start of the name:
+
+| Case | Value |
+| --- | --- |
+| Blender | `ViewLayer.` |
+| Multi-part, prefix differs per AOV | `subimage\d+\.` |
+
+An explicit value is applied to every AOV whether or not they all share it. The
+only thing it will not do is leave a cell with no name at all. If stripping makes
+two names identical, the sheet still builds and the report says which — they share
+one label and one preset.
+
+Note that the prefix still has to be correct *inside* a preset, since EXtractoR
+resolves channels by exact name. Stripping only affects the cell label and the
+preset filename it looks for, so it fixes matching, not a preset pointing at a
+channel path that no longer exists.
 
 Every non-beauty AOV needs a matching preset, because of
 [the EXtractoR limitation described below](#why-animation-presets).
@@ -142,20 +166,18 @@ EXtractoR. The script doesn't care what's inside the `.ffx` — it just applies 
 
 ### Included library
 
-Twenty presets ship in [`presets/`](presets/) covering an Arnold-style AOV set —
-19 EXtractoR and one Cryptomatte:
+129 presets ship in [`presets/`](presets/) — 123 EXtractoR and 6 Cryptomatte —
+covering pass names from Arnold, Redshift, V-Ray, Houdini Mantra and Blender in one
+flat set. [`presets/README.md`](presets/README.md) lists every one with the channels
+it routes.
 
-```
-DiffuseLighting  SpecularLighting  GI  Reflections  Refractions
-Transmission     Opacity           VolumeLighting   VolumeFogEmission
-VolumeFogTint    N  P  Z  UV       Normalized       ShadingPoints
-EdgeLength       PuzzleMatte       PuzzleMatte1     Crypto_Object
-```
+Point the script's **Preset folder** at `presets/`, or copy them into After Effects'
+User Presets folder and leave the default path alone.
 
-Point the script's preset folder at `presets/`, or copy them into After Effects'
-User Presets folder and leave the default path alone — either works. See
-[`presets/README.md`](presets/README.md) for the full inventory and how to add
-your own.
+A few AOV names mean different things to different renderers — `Depth`, `AO` and
+`UV` — and a flat folder can only hold one version of each. The preset README lists
+which version is here and which renderer it breaks on. The failure is quiet: the cell
+reports **found** and renders blank. A later version will detect it.
 
 To copy presets you make later out of After Effects:
 
@@ -195,9 +217,11 @@ job. `Reset` restores every default.
 | AOV name rule | Strip what the filenames share | Five rules; see below |
 | Pattern | `([^_.]+)[._]\d+\.exr$` | Only used by the regex rule; capture group 1 is the name |
 | Collapse Cryptomatte ranks | on | `crypto_object00/01/02` fold into `crypto_object` |
+| Strip prefix from AOV names | empty (auto) | Literal or regex, anchored at the start. `ViewLayer.` for Blender, `subimage\d+\.` for multi-part |
 | Skip AOVs whose preset is missing | off | Off still creates the cell, just unconfigured |
 | Source column width | 0 (auto) | Sizes the column to the longest name |
 | Max sheet width | 3840 px | The whole sheet is scaled to fit this |
+| Padding | 0 px | Gap between cells and around the sheet |
 | Black background solid | on | |
 | Label | on, yellow, no outline, scaled to cell | Font list comes from `app.fonts` where available |
 
@@ -251,5 +275,15 @@ that then runs unattended.
   will look like noise. That's correct — they're ID hashes, not imagery.
 
 ## Version
+
+**1.1.0**
+- Configurable padding between cells, taken out of the width budget so cells shrink
+  rather than the sheet growing past its maximum width.
+- Configurable AOV name prefix stripping, for Blender's `ViewLayer.` and for
+  multi-part EXRs whose prefix differs per AOV.
+- Cryptomatte rank layers collapse even when no un-suffixed base layer exists,
+  which is how Blender writes them.
+- Hardening: filenames decoded defensively, AOV names sanitised before being built
+  into a preset path, bounds checks on the EXR header reader.
 
 **1.0.0** — initial release.

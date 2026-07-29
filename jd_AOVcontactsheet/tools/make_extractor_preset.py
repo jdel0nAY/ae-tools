@@ -57,6 +57,28 @@ def patch(buf, names):
     return bytes(b)
 
 
+SENTINELS = {"(copy)", "(none)", ""}
+
+
+def rewrite_prefix(names, strip_re, set_prefix):
+    """Swap the layer prefix on an existing preset's channel paths.
+
+    Sentinel values like (copy) are left alone - they name a behaviour, not a
+    channel. Anything else has `strip_re` removed from the front and `set_prefix`
+    put in its place.
+    """
+    import re as _re
+    rx = _re.compile(strip_re) if strip_re else None
+    out = {}
+    for slot, name in names.items():
+        if name in SENTINELS:
+            out[slot] = name
+            continue
+        v = rx.sub("", name, count=1) if rx else name
+        out[slot] = set_prefix + v
+    return out
+
+
 def channels_for(aov, style):
     """Work out the four channel names for an AOV from a layout convention."""
     if style == "rgba":
@@ -85,8 +107,36 @@ def main():
                     choices=["rgba", "rgb", "xyz", "single"])
     ap.add_argument("--inspect", action="store_true",
                     help="just print the template's channel names and exit")
+    ap.add_argument("--rewrite", nargs="+", metavar="FFX",
+                    help="rewrite the layer prefix of existing presets instead of "
+                         "generating new ones")
+    ap.add_argument("--strip-prefix", default="",
+                    help="regex removed from the front of each channel path, "
+                         r"e.g. '^subimage\d+\.' or '^ViewLayer\.'")
+    ap.add_argument("--set-prefix", default="",
+                    help="text put in its place, e.g. 'ViewLayer.'. Empty removes it.")
     ap.add_argument("aovs", nargs="*", help="AOV names")
     args = ap.parse_args()
+
+    if args.rewrite:
+        os.makedirs(args.out_dir, exist_ok=True)
+        for src in args.rewrite:
+            buf = open(src, "rb").read()
+            if len(buf) != TEMPLATE_SIZE:
+                print(f"skip {os.path.basename(src)} - {len(buf)} bytes, not an "
+                      "EXtractoR preset", file=sys.stderr)
+                continue
+            before = read_names(buf)
+            after = rewrite_prefix(before, args.strip_prefix, args.set_prefix)
+            data = patch(buf, after)
+            dst = os.path.join(args.out_dir, os.path.basename(src))
+            with open(dst, "wb") as f:
+                f.write(data)
+            check = read_names(data)
+            ok = check == after
+            print(f"{'ok ' if ok else 'BAD'} {os.path.basename(src):38} "
+                  f"{before['red']}  ->  {check['red']}")
+        return
 
     buf = open(args.template, "rb").read()
     if len(buf) != TEMPLATE_SIZE:
