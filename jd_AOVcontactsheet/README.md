@@ -66,6 +66,14 @@ channels are then grouped into AOVs:
 | `uv.u` `uv.v` | one `uv` cell |
 | `Z` | one greyscale `Z` cell |
 | `crypto_object` + `crypto_object00/01/02` | one `crypto_object` cell |
+| `subimage03.DiffuseLighting.R/G/B` | one `DiffuseLighting` cell — the multi-part prefix is stripped |
+| `subimage00.R/G/B/A` | `Beauty` — a part holding bare RGBA is the beauty pass |
+
+Multi-part EXRs carry a part name on every channel, so an AOV would otherwise
+read as `subimage03.DiffuseLighting`. That prefix is stripped from the cell name —
+unless removing it would make two AOVs collide — which keeps labels readable and
+lets a preset named after the AOV alone match. The full channel base is recorded
+in each layer's comment.
 
 Every non-beauty AOV needs a matching preset, because of
 [the EXtractoR limitation described below](#why-animation-presets).

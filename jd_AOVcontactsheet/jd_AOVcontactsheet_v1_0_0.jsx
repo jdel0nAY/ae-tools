@@ -8,6 +8,12 @@
  *   Reads the channel list out of the EXR header, groups the channels into
  *   AOVs, and applies one animation preset per AOV.
  *
+ *   Multi-part files carry a part name on every channel, so an AOV would read as
+ *   "subimage03.DiffuseLighting". That prefix is stripped from the cell name -
+ *   unless doing so would make two AOVs collide - which keeps labels readable
+ *   and lets a preset named after the AOV alone match. The full channel name is
+ *   recorded in each layer's comment.
+ *
  *   EXtractoR keeps its channel selection in a custom-UI parameter that reports
  *   PropertyValueType.NO_VALUE. After Effects does not expose custom-value
  *   properties to scripting, so a script cannot set those dropdowns - not by
@@ -367,7 +373,7 @@
         var st = { pos: 4 };
         var version = readInt32(buf, st);
         var isMultiPart = (version & 0x1000) !== 0;
-        var channels = [], partCount = 0;
+        var channels = [], parts = [], partCount = 0;
 
         while (true) {
             var partName = "", partChannels = [];
@@ -398,6 +404,7 @@
                 st.pos = attrStart + attrSize;
             }
 
+            if (isMultiPart && partName !== "") { parts.push(partName); }
             for (var i = 0; i < partChannels.length; i++) {
                 channels.push((isMultiPart && partName !== "")
                     ? (partName + "." + partChannels[i]) : partChannels[i]);
@@ -408,14 +415,19 @@
             if (buf.charCodeAt(st.pos) === 0) { st.pos++; break; }
             if (++partCount > 128) { break; }
         }
-        return unique(channels);
+        return { channels: unique(channels), parts: unique(parts) };
     }
 
     // ----------------------------------------------------------------------
     // Grouping (layers mode)
     // ----------------------------------------------------------------------
 
-    function groupAOVs(channels) {
+    function isKnownPart(name, parts) {
+        for (var i = 0; i < parts.length; i++) { if (parts[i] === name) { return true; } }
+        return false;
+    }
+
+    function groupAOVs(channels, parts) {
         var map = {}, order = [];
 
         function ensure(name) {
@@ -437,6 +449,14 @@
                 if (SLOT_MAP.hasOwnProperty(suf)) {
                     base = ch.substring(0, dot);
                     slot = SLOT_MAP[suf];
+                    // In a multi-part file the beauty pass arrives as
+                    // <part>.R / <part>.G / ... - the same case as a bare R in a
+                    // single-part file, so treat it the same way.
+                    if (BARE_RGBA.hasOwnProperty(ch.substring(dot + 1)) &&
+                        isKnownPart(base, parts)) {
+                        base = BEAUTY_NAME;
+                        beauty = true;
+                    }
                 }
             } else if (dot === -1 && BARE_RGBA.hasOwnProperty(ch)) {
                 base = BEAUTY_NAME;
@@ -504,6 +524,47 @@
             kept.push(aovs[i]);
         }
         return { aovs: kept, dropped: dropped };
+    }
+
+    /**
+     * Multi-part EXRs carry a part name on every channel, so an AOV comes out as
+     * "subimage03.DiffuseLighting". The part prefix is noise in a cell label and
+     * it stops a preset named after the AOV alone from matching, so it is removed
+     * here - but only when every name stays unique afterwards, since two parts
+     * could legitimately hold a layer of the same name.
+     */
+    function stripOnePartPrefix(name, parts) {
+        for (var i = 0; i < parts.length; i++) {
+            var p = parts[i];
+            if (p && name.length > p.length + 1 &&
+                name.substring(0, p.length + 1) === (p + ".")) {
+                return name.substring(p.length + 1);
+            }
+        }
+        return name;
+    }
+
+    function stripPartPrefixes(aovs, parts) {
+        if (!parts || parts.length === 0) { return false; }
+
+        var proposed = [], seen = {}, i;
+        for (i = 0; i < aovs.length; i++) {
+            var n = stripOnePartPrefix(aovs[i].name, parts);
+            var key = n.toLowerCase();
+            if (n === "" || seen.hasOwnProperty(key)) { return false; }
+            seen[key] = 1;
+            proposed.push(n);
+        }
+
+        var changed = false;
+        for (i = 0; i < aovs.length; i++) {
+            if (proposed[i] !== aovs[i].name) {
+                aovs[i].fullName = aovs[i].name;   // kept for the layer comment
+                aovs[i].name = proposed[i];
+                changed = true;
+            }
+        }
+        return changed;
     }
 
     // ----------------------------------------------------------------------
@@ -938,6 +999,9 @@
             } else {
                 lay.comment = row.isExr ? "shown natively - no preset applied"
                                         : "non-EXR source - shown natively";
+            }
+            if (row.aov.fullName) {
+                lay.comment = "channels: " + row.aov.fullName + "   |   " + lay.comment;
             }
 
             var fit = Math.min(cellW / row.item.width, cellH / row.item.height);
@@ -1453,7 +1517,8 @@
         // out one cell per file.
         var layersMode = (items.length === 1) && EXR_EXT.test(fileNameOf(items[0]));
 
-        var channels = [], baseAOVs = [], nameHow = "";
+        var channels = [], exrParts = [], partsStripped = false;
+        var baseAOVs = [], nameHow = "";
 
         function rebuildFileAOVs() {
             var fromFiles = aovsFromFiles(items, settings);
@@ -1462,12 +1527,15 @@
         }
 
         if (layersMode) {
-            channels = readExrChannels(items[0].mainSource.file);
+            var exr = readExrChannels(items[0].mainSource.file);
+            channels = exr.channels;
+            exrParts = exr.parts;
             if (channels.length === 0) { throw new Error("No channels could be read from this file."); }
-            baseAOVs = groupAOVs(channels);
+            baseAOVs = groupAOVs(channels, exrParts);
             if (baseAOVs.length === 0) {
                 throw new Error("No usable AOVs were found in " + channels.length + " channels.");
             }
+            partsStripped = stripPartPrefixes(baseAOVs, exrParts);
         } else {
             rebuildFileAOVs();
         }
@@ -1482,9 +1550,13 @@
         }
 
         function sourceLineText() {
-            return layersMode
-                ? (fileNameOf(items[0]) + "  -  " + channels.length + " channels")
-                : (items.length + " file(s), one AOV each  -  names from " + nameHow);
+            if (!layersMode) {
+                return items.length + " file(s), one AOV each  -  names from " + nameHow;
+            }
+            var note = "";
+            if (exrParts.length > 0) { note += ", " + exrParts.length + " parts"; }
+            if (partsStripped) { note += ", part prefix stripped"; }
+            return fileNameOf(items[0]) + "  -  " + channels.length + " channels" + note;
         }
 
         var droppedRanks = [];
@@ -1533,6 +1605,9 @@
                   built.cols + " x " + built.rows + " grid, " + rep.cells + " cell(s)\n" +
                   "Presets applied: " + rep.applied;
 
+        if (partsStripped) {
+            msg += "\n\nMulti-part EXR: the part prefix was stripped from the AOV names.";
+        }
         if (droppedRanks.length) {
             msg += "\n\nCollapsed Cryptomatte rank layers:\n  " + droppedRanks.join(", ");
         }
