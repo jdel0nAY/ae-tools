@@ -1,0 +1,103 @@
+# Builds jd_exrc.exe, runs the tests and packages the jd_EXRCompiler release zip.
+# A tag named jd_EXRCompiler-vX.Y.Z also publishes a GitHub release with that zip.
+name: jd_EXRCompiler
+
+on:
+  push:
+    branches: [main]
+    tags: ["jd_EXRCompiler-v*"]
+    paths: ["jd_EXRCompiler/**", ".github/workflows/jd_EXRCompiler.yml"]
+  pull_request:
+    paths: ["jd_EXRCompiler/**", ".github/workflows/jd_EXRCompiler.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read  # least privilege; only the tag-only release job below can write
+
+jobs:
+  build:
+    runs-on: windows-2022
+    defaults:
+      run:
+        shell: bash
+    env:
+      VCPKG_ROOT: ${{ github.workspace }}/../vcpkg
+      TRIPLET: x64-windows-static-md
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: vcpkg (pinned to the manifest baseline)
+        run: |
+          BASELINE=$(grep -o '"builtin-baseline": *"[0-9a-f]*"' jd_EXRCompiler/cli/vcpkg.json | grep -o '[0-9a-f]\{40\}')
+          git clone --filter=tree:0 https://github.com/microsoft/vcpkg "$VCPKG_ROOT"
+          git -C "$VCPKG_ROOT" checkout "$BASELINE"
+          "$VCPKG_ROOT/bootstrap-vcpkg.bat" -disableMetrics
+
+      - name: Cache vcpkg binaries
+        uses: actions/cache@v4
+        with:
+          path: ~/AppData/Local/vcpkg/archives
+          key: vcpkg-${{ env.TRIPLET }}-${{ hashFiles('jd_EXRCompiler/cli/vcpkg.json') }}
+
+      - name: Install dependencies
+        working-directory: jd_EXRCompiler/cli
+        run: '"$VCPKG_ROOT/vcpkg.exe" install --triplet $TRIPLET --x-install-root=vcpkg_installed --disable-metrics'
+
+      - name: Build
+        working-directory: jd_EXRCompiler/cli
+        run: |
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_PREFIX_PATH="$PWD/vcpkg_installed/$TRIPLET"
+          cmake --build build --config Release
+
+      - name: Test (CLI)
+        working-directory: jd_EXRCompiler/cli
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Test (panel logic)
+        run: node jd_EXRCompiler/panel/tests/test_core.js "$PWD/jd_EXRCompiler/cli/build/Release/jd_exrc.exe"
+
+      - name: Package
+        run: |
+          VERSION=$(grep -o 'VERSION = "[0-9.]*"' jd_EXRCompiler/cli/src/exrc.h | grep -o '[0-9.]*')
+          PKG="jd_EXRCompiler-$VERSION-win64"
+          mkdir -p "dist/$PKG/licenses"
+          cp jd_EXRCompiler/cli/build/Release/jd_exrc.exe "dist/$PKG/"
+          cp jd_EXRCompiler/panel/jd_EXRCompiler.jsx "dist/$PKG/"
+          cp jd_EXRCompiler/panel/README.md "dist/$PKG/README.md"
+          cp jd_EXRCompiler/CHANGELOG.md jd_EXRCompiler/THIRD_PARTY.md "dist/$PKG/"
+          cp LICENSE "dist/$PKG/LICENSE.txt"
+          for d in jd_EXRCompiler/cli/vcpkg_installed/$TRIPLET/share/*/; do
+            n=$(basename "$d"); [ -f "$d/copyright" ] && cp "$d/copyright" "dist/$PKG/licenses/$n.txt"
+          done
+          (cd dist && 7z a -tzip "$PKG.zip" "$PKG" > /dev/null)
+          echo "PKG=$PKG" >> "$GITHUB_ENV"
+          echo "pkg=$PKG" >> "$GITHUB_OUTPUT"
+        id: package
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.PKG }}
+          path: dist/${{ env.PKG }}.zip
+    outputs:
+      pkg: ${{ steps.package.outputs.pkg }}
+
+  release:
+    # Runs only for a jd_EXRCompiler-vX.Y.Z tag; the only job allowed to write to the repository.
+    if: startsWith(github.ref, 'refs/tags/jd_EXRCompiler-v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: jd_EXRCompiler/CHANGELOG.md
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.build.outputs.pkg }}
+          path: dist
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PKG: ${{ needs.build.outputs.pkg }}
+        run: gh release create "$GITHUB_REF_NAME" "dist/$PKG.zip" --title "jd_EXRCompiler ${GITHUB_REF_NAME#jd_EXRCompiler-v}" --notes-file jd_EXRCompiler/CHANGELOG.md

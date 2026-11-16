@@ -1,0 +1,11 @@
+{
+  "name": "jd-exrc",
+  "version-string": "1.0.0",
+  "dependencies": [
+    "openexr",
+    "nlohmann-json",
+    "stb",
+    { "name": "tiff", "default-features": false, "features": ["zip"] }
+  ],
+  "builtin-baseline": "8f363bdc11359ede4bc51e5eb32a2617538049c8"
+}

@@ -1,0 +1,53 @@
+ocio_profile_version: 2.1
+
+# Minimal OCIO config for the jd_EXRCompiler panel tests (written for this repo, MIT).
+# Scene-linear Rec.709 working space, an sRGB-encoded space, and a raw data space.
+description: jd_EXRCompiler panel test config (linear Rec.709 / sRGB / raw)
+
+environment: {}
+search_path: ""
+strictparsing: true
+luma: [0.2126, 0.7152, 0.0722]
+
+roles:
+  default: Linear Rec.709
+  scene_linear: Linear Rec.709
+  data: Raw
+  color_picking: sRGB Encoded Rec.709
+  color_timing: sRGB Encoded Rec.709
+  compositing_log: sRGB Encoded Rec.709
+  matte_paint: sRGB Encoded Rec.709
+  texture_paint: sRGB Encoded Rec.709
+
+file_rules:
+  - !<Rule> {name: Default, colorspace: default}
+
+displays:
+  sRGB:
+    - !<View> {name: Standard, colorspace: sRGB Encoded Rec.709}
+    - !<View> {name: Raw, colorspace: Raw}
+
+active_displays: [sRGB]
+active_views: [Standard, Raw]
+
+colorspaces:
+  - !<ColorSpace>
+    name: Linear Rec.709
+    family: Scene-linear
+    encoding: scene-linear
+    isdata: false
+    description: Scene-linear, Rec.709 primaries (reference space)
+
+  - !<ColorSpace>
+    name: sRGB Encoded Rec.709
+    family: Encoded
+    encoding: sdr-video
+    isdata: false
+    description: sRGB transfer curve, Rec.709 primaries
+    from_scene_reference: !<ExponentWithLinearTransform> {gamma: 2.4, offset: 0.055, direction: inverse}
+
+  - !<ColorSpace>
+    name: Raw
+    family: Data
+    isdata: true
+    description: Data, never converted
