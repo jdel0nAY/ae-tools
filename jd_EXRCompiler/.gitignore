@@ -1,0 +1,11 @@
+build/
+out/
+vcpkg_installed/
+**/vcpkg_installed/
+*.user
+.vs/
+test-data/_generated/
+cli/vcpkg_install.log
+panel/undefined
+__pycache__/
+*.pyc

@@ -1,0 +1,33 @@
+cmake_minimum_required(VERSION 3.20)
+project(jd_exrc VERSION 1.0.0 LANGUAGES CXX)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+if(MSVC)
+  add_compile_options(/W4 /utf-8 /permissive-)
+endif()
+
+# Core tests: no external dependencies.
+enable_testing()
+add_executable(test_core tests/test_core.cpp)
+target_include_directories(test_core PRIVATE src)
+add_test(NAME test_core COMMAND test_core)
+
+# CLI: needs OpenEXR, nlohmann-json, stb and libtiff (vcpkg manifest; build steps in README.md).
+find_package(OpenEXR CONFIG QUIET)
+find_package(nlohmann_json CONFIG QUIET)
+find_path(STB_INCLUDE_DIR stb_image.h)
+find_package(TIFF QUIET)
+# libtiff's ZIP codec needs zlib; a static build must link it explicitly (vcpkg names it libzs.lib)
+find_library(JD_ZLIB NAMES libzs zs zlibstatic zlib z)
+if(OpenEXR_FOUND AND nlohmann_json_FOUND AND STB_INCLUDE_DIR AND TIFF_FOUND)
+  add_executable(jd_exrc src/main.cpp src/image_io.cpp src/job.cpp src/check.cpp)
+  target_include_directories(jd_exrc PRIVATE src ${STB_INCLUDE_DIR})
+  target_link_libraries(jd_exrc PRIVATE OpenEXR::OpenEXR nlohmann_json::nlohmann_json TIFF::TIFF ${JD_ZLIB})
+  if(MSVC)
+    target_compile_options(jd_exrc PRIVATE /wd4100 /wd4244 /wd4267 /wd4996)  # third-party headers (stb)
+  endif()
+  add_test(NAME cli COMMAND ${CMAKE_COMMAND} -DEXE=$<TARGET_FILE:jd_exrc> -DWORK=${CMAKE_CURRENT_BINARY_DIR}/cli_test
+                                             -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/cli_test.cmake)
+else()
+  message(STATUS "OpenEXR, nlohmann_json, stb or TIFF not found: building the core tests only")
+endif()
