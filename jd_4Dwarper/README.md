@@ -87,7 +87,7 @@ build; CMake warns that the effect is skipped. Tests: [docs/TESTING.md](docs/TES
 | `docs/` | User guide, testing, images |
 
 ## Status
-Version 0.3.5, a test build. See the [changelog](CHANGELOG.md) and the
+Version 0.3.6, a test build. See the [changelog](CHANGELOG.md) and the
 [known limits](docs/USER_GUIDE.md#known-limits).
 
 By Jean Delaunay.

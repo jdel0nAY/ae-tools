@@ -479,12 +479,58 @@ static bool DumpFrame(int i, int n) {   // a few frames over the shot, and the w
     return i == 0 || i % 60 == 0 || i >= n - 13;
 }
 
+// 0.3.6 (run 8): the layers picked in Setup (Source Layer, Target / Source Ignore Layer) as a key, so that changing
+// one marks the analysis as stale. Read through the AEGP stream of each layer param (its value is a layer ID), like
+// SourceRange(). Returns false when it cannot be read; the caller then does not use it (never a false warning).
+static bool LayerKey(PF_InData* in_data, uint32_t* key) {
+    if (!g_aegp_id) return false;
+    bool ok = true;
+    uint32_t h = 2166136261u;
+    AEGP_EffectRefH meH = nullptr;
+    try {
+        AEGP_SuiteHandler s(in_data->pica_basicP);
+        if (s.PFInterfaceSuite1()->AEGP_GetNewEffectForEffect(g_aegp_id, in_data->effect_ref, &meH) || !meH) return false;
+        const int idx[3] = {P_SOURCE, P_MASK, P_SRC_MASK};
+        for (int k = 0; k < 3 && ok; ++k) {
+            AEGP_StreamRefH st = nullptr;
+            if (s.StreamSuite5()->AEGP_GetNewEffectStreamByIndex(g_aegp_id, meH, idx[k], &st) || !st) { ok = false; break; }
+            A_Time t0 = {0, 1};
+            AEGP_StreamValue2 v; AEFX_CLR_STRUCT(v);
+            if (!s.StreamSuite5()->AEGP_GetNewStreamValue(g_aegp_id, st, AEGP_LTimeMode_LayerTime, &t0, FALSE, &v)) {
+                const uint32_t id = uint32_t(v.val.layer_id);
+                s.StreamSuite5()->AEGP_DisposeStreamValue(&v);
+                for (int i = 0; i < 4; ++i) { h ^= (id >> (8 * i)) & 0xFF; h *= 16777619u; }
+                h ^= uint32_t(k + 1); h *= 16777619u;
+            } else ok = false;
+            s.StreamSuite5()->AEGP_DisposeStream(st);
+        }
+        s.EffectSuite4()->AEGP_DisposeEffect(meH);
+    } catch (...) { ok = false; }
+    if (ok) *key = h;
+    return ok;
+}
+static const uint32_t kFlagLayerKey = 0x100u;   // BlobHeader::flags: pad0 includes the LayerKey
+
+// 0.3.6 (run 8): every Analyze failure gets a log line (it used to return before the log was written).
+static void LogFailure(const char* reason, const char* msg) {
+    if (FILE* f = std::fopen(LogPath().c_str(), "a")) {
+        std::time_t now = std::time(nullptr); char stamp[32] = "";
+        std::strftime(stamp, sizeof(stamp), "%Y-%m-%d %H:%M:%S", std::localtime(&now));
+        std::fprintf(f, "%s  jd_4Dwarper %d.%d.%d  FAILED (%s)%s%s\n", stamp, W4D_MAJOR_VERSION, W4D_MINOR_VERSION, W4D_BUG_VERSION,
+                     reason, msg ? ": " : "", msg ? msg : "");
+        std::fclose(f);
+    }
+}
+
 static PF_Err Analyze(PF_InData* in_data, PF_OutData* out_data, PF_ParamDef* params[]) {
     PF_Err err = PF_Err_NONE;
     typedef std::chrono::steady_clock Clock;
+    // 0.3.6 (run 8): a failure is logged, and its red status is stored WITHOUT the message box: with both in one
+    // call AE kept the old banner. The box is shown only when the banner is off, so the reason is always visible.
     auto fail = [&](const char* reason, const char* msg) {
-        if (msg) Message(out_data, msg);
+        LogFailure(reason, msg);
         if (!std::strcmp(reason, "cancelled")) return PF_Err(PF_Err_NONE);   // previous analysis and status kept
+        if (msg && !params[P_BANNER]->u.bd.value) Message(out_data, msg);
         return StoreStatus(in_data, out_data, params, w4d::kFailed, reason);
     };
     if (in_data->time_step <= 0) return fail("no frame duration", "jd_4Dwarper: this layer has no frame duration.");
@@ -687,7 +733,11 @@ static PF_Err Analyze(PF_InData* in_data, PF_OutData* out_data, PF_ParamDef* par
     AEGP_SuiteHandler suites(in_data->pica_basicP);
     void* hp = suites.HandleSuite1()->host_lock_handle(h);
     std::memcpy(hp, blob.data(), blob.size());
-    ((w4d::BlobHeader*)hp)->pad0 = SettingsKey(params);   // for "needs re-analysis"
+    {   // for "needs re-analysis": the analysis settings, and (0.3.6) the chosen layers when they can be read
+        uint32_t key = SettingsKey(params), lk = 0;
+        if (LayerKey(in_data, &lk)) { key = (key ^ lk) | 1u; ((w4d::BlobHeader*)hp)->flags |= kFlagLayerKey; }
+        ((w4d::BlobHeader*)hp)->pad0 = key;
+    }
     if (R.held_start + R.held_end > 0) {   // shown by the banner: "held the last source frame for N frames"
         char why[32]; std::snprintf(why, sizeof(why), "held %d %d", R.held_start, R.held_end);
         w4d::set_status((w4d::BlobHeader*)hp, w4d::kSolved, why);
@@ -720,7 +770,12 @@ static PF_Err DrawBanner(PF_InData* in_data, PF_OutData* out_data, PF_ParamDef* 
                 if (i == 0 || o < omin) omin = o;
                 if (i == 0 || o > omax) omax = o;
             }
-            stale = frames > 0 && hd->pad0 && hd->pad0 != SettingsKey(params);
+            if (frames > 0 && hd->pad0) {
+                uint32_t expect = SettingsKey(params), lk = 0;
+                bool known = true;
+                if (hd->flags & kFlagLayerKey) { if (LayerKey(in_data, &lk)) expect = (expect ^ lk) | 1u; else known = false; }
+                stale = known && hd->pad0 != expect;
+            }
         } else if (w4d::old_version(p, bytes)) {   // analysed by 0.1/0.2: not read
             old = true;
         }
@@ -742,7 +797,7 @@ static PF_Err DrawBanner(PF_InData* in_data, PF_OutData* out_data, PF_ParamDef* 
     DRAWBOT_ColorRGBA col; col.alpha = 0.92f;
     auto set = [&](float r, float g, float b) { col.red = r; col.green = g; col.blue = b; };
     if (old) { set(0.85f, 0.45f, 0.05f); std::snprintf(text, sizeof(text), "jd_4Dwarper: needs re-analysis (made by an older version). Press Analyze."); }
-    else if (status == w4d::kSolved && stale) { set(0.85f, 0.45f, 0.05f); std::snprintf(text, sizeof(text), "jd_4Dwarper: needs re-analysis (Setup or Advanced settings changed). Press Analyze."); }
+    else if (status == w4d::kSolved && stale) { set(0.85f, 0.45f, 0.05f); std::snprintf(text, sizeof(text), "jd_4Dwarper: needs re-analysis (layers or settings changed). Press Analyze."); }
     else if (status == w4d::kSolved) {
         set(0.13f, 0.55f, 0.25f);
         int hs = 0, he = 0;
