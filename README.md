@@ -17,7 +17,7 @@ usage and requirements.
 | [jd_ShotInfoPanel_forAfterEffects](jd_ShotInfoPanel_forAfterEffects/) | Panel | Pulls per-shot data (thumbnail, camera focal length, frame range, fps, resolution) from a Google Sheet into a dockable panel, with a comp HUD and thumbnail import. | 1.0.0 |
 | [jd_AOVcontactsheet](jd_AOVcontactsheet/) | Script | Builds a labelled contact sheet comp of a render's AOVs — from one multi-layer EXR, or from a set of separate per-AOV files. Ships with 129 animation presets. | 1.1.0 |
 | [jd_EXRCompiler](jd_EXRCompiler/) | Panel + CLI | Merges render passes into one multi-layer EXR and builds a spec-exact Cryptomatte from black-and-white or RGB mattes or comp layers, which AE can't write itself. Windows. | 1.0.1 |
-| [jd_4Dwarper](jd_4Dwarper/) | Plug-in | Conforms one motion-control pass to another in time and space, following the set; the talent can be masked out. Windows. | 0.3.5 |
+| [jd_4Dwarper](jd_4Dwarper/) | Plug-in | Conforms one motion-control pass to another in time and space, following the set; the talent can be masked out. Windows. | 0.3.6 |
 
 <!-- Add new tools as rows above. -->
 

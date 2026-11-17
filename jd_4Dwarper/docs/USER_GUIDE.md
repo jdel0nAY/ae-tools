@@ -23,12 +23,12 @@ A strip at the top of the layer in the comp and layer views. It is never rendere
 | grey: not analysed | No analysis yet | Pick the Source Layer, press Analyze |
 | green: ready | Analysis done: number of frames and time offset range (source minus target, in frames) | Nothing |
 | amber: ready, with a warning | The first or last N frames need source frames past the Source Layer's in or out point. They show the take's first or last frame, held, warped to follow the set | Check those frames; extend the source take, or set its out point before any dissolve |
-| orange: needs re-analysis | Setup or Advanced settings changed after Analyze, or the analysis comes from an older version | Press Analyze |
-| red: failed | Analyze stopped: the reason and what to do are in the banner | See Troubleshooting |
+| orange: needs re-analysis | A layer (Source or Ignore Layer) or a Setup / Advanced setting changed after Analyze, or the analysis comes from an older version | Press Analyze |
+| red: failed | Analyze stopped: the reason and what to do are in the banner, and in the log | See Troubleshooting |
 
 The banner shows while the effect is selected in Effect Controls (After Effects draws an effect's
-view overlay only then). Turn it off with **Show Status Banner**. Note: changing a **layer** (Source Layer, Ignore Layers) does not turn the
-banner orange. Press Analyze after changing layers.
+view overlay only then). Turn it off with **Show Status Banner**; Analyze then reports a failure in a message box
+instead. Every Analyze, failed or not, adds a line to `%TEMP%\jd_4Dwarper_analyze.log`.
 
 ## Controls
 ![The jd_4Dwarper controls, annotated](images/panel-guide.png)
@@ -122,4 +122,3 @@ With masks, the stiffness prior is off by default: tests showed the masks work b
 - **End of the source take**: where the target needs source frames the take does not have, the last frame is
   held. Its motion stops; the warp still follows the set.
 - Same pixel size for source and target. Tested at 23.976 fps, 1920x1080, After Effects 2026, Windows.
-- Changing layers does not mark the analysis as stale: press Analyze yourself.
