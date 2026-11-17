@@ -21,6 +21,32 @@ usage and requirements.
 
 <!-- Add new tools as rows above. -->
 
+## At a glance
+
+### [jd_ShotInfoPanel_forAfterEffects](jd_ShotInfoPanel_forAfterEffects/)
+Per-shot data from a Google Sheet in a dockable panel: thumbnail, camera, frame range, comp HUD.
+[README](jd_ShotInfoPanel_forAfterEffects/)
+
+[![jd_ShotInfoPanel_forAfterEffects](jd_ShotInfoPanel_forAfterEffects/docs/panel-guide.png)](jd_ShotInfoPanel_forAfterEffects/)
+
+### [jd_AOVcontactsheet](jd_AOVcontactsheet/)
+A labelled contact sheet comp of every AOV in a render, from one multi-layer EXR or separate files.
+[README](jd_AOVcontactsheet/)
+
+[![jd_AOVcontactsheet](jd_AOVcontactsheet/docs/example-result.png)](jd_AOVcontactsheet/)
+
+### [jd_EXRCompiler](jd_EXRCompiler/)
+Merge passes into one multi-layer EXR, and build a spec-exact Cryptomatte from mattes. Windows.
+[README](jd_EXRCompiler/) · [Download 1.0.1](https://github.com/jdel0nAY/ae-tools/releases/tag/jd_EXRCompiler-v1.0.1)
+
+[![jd_EXRCompiler](jd_EXRCompiler/docs/hero.png)](jd_EXRCompiler/)
+
+### [jd_4Dwarper](jd_4Dwarper/)
+Conform one motion-control pass to another in time and space, following the set. Windows.
+[README](jd_4Dwarper/) · [Download 0.3.4](https://github.com/jdel0nAY/ae-tools/releases/tag/jd_4Dwarper-v0.3.4)
+
+[![jd_4Dwarper](jd_4Dwarper/docs/images/hero_before_after.png)](jd_4Dwarper/)
+
 ## License
 
 [MIT](LICENSE) — applies to everything in this repository unless a subfolder
