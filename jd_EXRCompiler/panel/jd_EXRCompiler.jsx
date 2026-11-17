@@ -1,5 +1,5 @@
 /*
- * jd_EXRCompiler 1.0.0 - After Effects panel
+ * jd_EXRCompiler 1.0.1 - After Effects panel
  *
  * Merges render passes into one multi-layer EXR and builds a Cryptomatte from
  * black-and-white or RGB mattes, by driving the jd_exrc command-line tool.
@@ -24,7 +24,7 @@
 (function jd_EXRCompilerPanel(thisObj) {
 
     var TOOL = "jd_EXRCompiler";
-    var VERSION = "1.0.0";
+    var VERSION = "1.0.1";
     var SETUP_SUFFIX = ".jd_EXRCompiler.json";
     var SETTINGS_SECTION = "jd_EXRCompiler";
     var EXE_NAMES = ["jd_exrc.exe", "jd_exrc"];
@@ -1215,10 +1215,27 @@
         return info;
     }
 
+    // TIFF: channels named the way the CLI names them (Y, YA, RGB, RGBA).
+    function tiffChannels(spp) {
+        return [[], ["Y"], ["Y", "A"], ["R", "G", "B"], ["R", "G", "B", "A"]][spp] ||
+               ["R", "G", "B", "A"].concat((function () { var x = [], i; for (i = 4; i < spp; i++) { x.push("C" + i); } return x; })());
+    }
+    function readTiffInfo(file) {
+        var t = tiffHeaderInfo(readBytes(file, 65536));
+        if (!t || !t.width) { throw new Error(decodeURI(file.name) + ": not a TIFF this panel can read (header not found)."); }
+        var okInt = t.format === 1 && (t.bits === 8 || t.bits === 16), okFloat = t.format === 3 && (t.bits === 16 || t.bits === 32);
+        if (!okInt && !okFloat) {
+            throw new Error(decodeURI(file.name) + ": " + t.bits + "-bit " + (t.format === 3 ? "float" : "integer") +
+                            " TIFF is not supported (8/16-bit integer, 16/32-bit float).");
+        }
+        return { channels: tiffChannels(t.spp), width: t.width, height: t.height };
+    }
+
     function readImageInfo(file) {
         if (/\.exr$/i.test(file.name)) { return readExrInfo(file); }
         if (/\.png$/i.test(file.name)) { return readPngInfo(file); }
-        throw new Error(file.name + ": only EXR and PNG are read in this version.");
+        if (/\.tiff?$/i.test(file.name)) { return readTiffInfo(file); }
+        throw new Error(file.name + ": only EXR, PNG and TIFF are read.");
     }
 
     // ---------------------------------------------------------------- sequences
@@ -1398,8 +1415,8 @@
 
     function pickFiles(prompt, multi) {
         var probe = new File(lastFolder().fsName + "/pick");
-        var filter = IS_WIN ? "Images:*.exr;*.png,All files:*.*" : function (f) {
-            return (f instanceof Folder) || /\.(exr|png)$/i.test(f.name);
+        var filter = IS_WIN ? "Images:*.exr;*.png;*.tif;*.tiff,All files:*.*" : function (f) {
+            return (f instanceof Folder) || /\.(exr|png|tiff?)$/i.test(f.name);
         };
         var res = probe.openDlg(prompt, filter, multi);
         if (!res) { return []; }
@@ -1559,7 +1576,7 @@
     // ---------------------------------------------------------------- passes actions
 
     function addPasses() {
-        var files = pickFiles("Add passes (EXR or PNG; pick one frame of each sequence)", true);
+        var files = pickFiles("Add passes (EXR, PNG or TIFF; pick one frame of each sequence)", true);
         if (!files.length) { return; }
         var newRows = [], names = [], i, seq, info;
         for (i = 0; i < files.length; i++) {
@@ -1778,7 +1795,7 @@
     }
 
     function addMattes() {
-        var files = pickFiles("Add mattes (EXR or PNG; pick one frame of each sequence)", true);
+        var files = pickFiles("Add mattes (EXR, PNG or TIFF; pick one frame of each sequence)", true);
         if (!files.length) { return; }
         var sel = [], added = 0, i, j;
         for (i = 0; i < files.length; i++) {

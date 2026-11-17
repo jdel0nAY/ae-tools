@@ -2,6 +2,15 @@
 
 All notable changes to `jd_EXRCompiler`.
 
+## 1.0.1
+
+### Panel
+- Reads TIFF passes and mattes (8/16-bit integer, 16/32-bit float), like `jd_exrc` already did.
+
+### Docs
+- One illustrated user guide (`README.md`) with annotated panel screenshots and results in AE;
+  it is also the README in the release zip.
+
 ## 1.0.0
 
 First public release.

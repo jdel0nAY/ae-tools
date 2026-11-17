@@ -63,7 +63,8 @@ jobs:
           mkdir -p "dist/$PKG/licenses"
           cp jd_EXRCompiler/cli/build/Release/jd_exrc.exe "dist/$PKG/"
           cp jd_EXRCompiler/panel/jd_EXRCompiler.jsx "dist/$PKG/"
-          cp jd_EXRCompiler/panel/README.md "dist/$PKG/README.md"
+          cp jd_EXRCompiler/README.md "dist/$PKG/README.md"
+          mkdir -p "dist/$PKG/docs" && cp jd_EXRCompiler/docs/*.png "dist/$PKG/docs/"
           cp jd_EXRCompiler/CHANGELOG.md jd_EXRCompiler/THIRD_PARTY.md "dist/$PKG/"
           cp LICENSE "dist/$PKG/LICENSE.txt"
           for d in jd_EXRCompiler/cli/vcpkg_installed/$TRIPLET/share/*/; do
