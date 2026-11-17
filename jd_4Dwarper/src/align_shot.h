@@ -54,6 +54,15 @@ struct ShotOptions {
   // Tension pass: after the field is solved, cells whose residual, strain or temporal jump is above
   // median + tension_k * MAD get a wider local search and an edge-aware cohesion. Off by default.
   bool tension_pass = false;
+  // 0.3.5 confidence: a frame is LOW confidence when less than conf_min_set of it is set (after the ignore masks)
+  // or its time score has no clear minimum (best other candidate within conf_min_sharp of the best). Low frames
+  // take their offset from their confident neighbours (linear) and their homography from the target-motion
+  // prediction (like held frames); conf_refine also refines that prediction on the fine levels (with rejection).
+  bool confidence = false;
+  double conf_min_set = 0.55, conf_min_sharp = 0.05;
+  bool conf_refine = false;
+  // 0.3.5 speed: fit the time candidates only on every cand_stride-th frame (1 = all frames, as before).
+  int cand_stride = 1;
   double tension_k = 3.0;
   int tension_radius = 6;          // local search radius, analysis pixels
   double tension_edge = 0.08;      // luma difference between cells at which cohesion falls to 1/e
@@ -92,6 +101,9 @@ struct ShotResult {
   // 0.3.3: target frames whose source time ran past the source frames and is held on the first / last one
   // (their homographies are guarded: seeded from the neighbouring frame through the target motion).
   int held_start = 0, held_end = 0;
+  // 0.3.5: per target frame 1 = low confidence (interpolated); count of them
+  std::vector<char> low_conf;
+  int interpolated = 0;
   int coarse_offset = 0;
   bool cancelled = false;
   // Residual field per target frame (empty when off): grid_w * grid_h pairs (du, dv), row-major, NORMALISED units

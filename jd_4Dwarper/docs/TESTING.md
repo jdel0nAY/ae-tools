@@ -41,6 +41,12 @@ PASS = source time within 0.0002 frames, homography and local warp within 0.01 p
 `--source-frames N` uses only source frames 0 to N-1, like a Source Layer out point in After Effects. It also
 prints the time offset range and the last source times.
 
+Other `w4d_verify` options: `--noise L` adds +-L levels of random noise to the analysed luma (how stable the
+solve is to small decoding differences), `--dump <csv>` writes per-frame solved time, homography, mask share and
+time scores, `--cand-stride N` / `--confidence 1` / `--time-smooth X` override solver settings. It opts out of
+Windows power throttling, so timings are not slowed down when nobody is at the computer. Set the environment
+variable `W4D_TIMING=1` to print the time of each solve phase.
+
 ## 4. Project compatibility: `check_param_ids.py`
 After Effects finds a saved project's values by parameter ID. This script compares the controls of an older
 version (from git) with the current source: same ID, type and default for every old control, no ID used twice.

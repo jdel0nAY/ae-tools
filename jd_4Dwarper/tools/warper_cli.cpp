@@ -408,6 +408,11 @@ static int align(std::map<std::string, std::string>& a) {
   if (a.count("temporal-radius")) opt.temporal_radius = std::stoi(a["temporal-radius"]);
   if (a.count("grid-time-median")) opt.grid_time_median = std::stoi(a["grid-time-median"]);
   if (a.count("max-slope")) opt.max_slope = std::stod(a["max-slope"]);
+  if (a.count("confidence")) opt.confidence = std::stoi(a["confidence"]) != 0;   // 0.3.5
+  if (a.count("cand-stride")) opt.cand_stride = std::stoi(a["cand-stride"]);
+  if (a.count("conf-refine")) opt.conf_refine = std::stoi(a["conf-refine"]) != 0;
+  if (a.count("conf-set")) opt.conf_min_set = std::stod(a["conf-set"]);
+  if (a.count("conf-sharp")) opt.conf_min_sharp = std::stod(a["conf-sharp"]);
   // --edges extend (default: repeat the source's border pixels) | black (nothing where the source has no pixels)
   // | target (the target frame where the source has no pixels). A coverage mask per frame (white = the source had
   // pixels there) is always written to <out>/coverage/.
@@ -429,6 +434,7 @@ static int align(std::map<std::string, std::string>& a) {
   else gw = gh = 0;
   auto t1 = Clock::now();
   ShotResult R = align_shot(n, nSu, [&](int i) -> const Image& { return T[i]; }, [&](int i) -> const Image& { return S[std::min(i, nSu - 1)]; }, opt);
+  if (opt.confidence) std::printf("confidence: %d frames interpolated\n", R.interpolated);
   if (R.held_start + R.held_end > 0) std::printf("held the first source frame for %d frames, the last for %d frames\n", R.held_start, R.held_end);
   const double solve_s = secs(t1);
   if (mode == "space") for (int t = 0; t < n; ++t) R.src_time[t] = t;

@@ -165,7 +165,7 @@ static PF_Err HandleArbitrary(PF_InData* in_data, PF_OutData*, PF_ArbParamsExtra
 // ---------------------------------------------------------------- setup
 static PF_Err About(PF_InData*, PF_OutData* out_data, PF_ParamDef*[], PF_LayerDef*) {
     std::snprintf(out_data->return_msg, sizeof(out_data->return_msg),
-                  "jd_4Dwarper %d.%d.%d\rConforms a source pass to this layer in time and space.\r1. Setup: pick the Source Layer (and the Ignore Layers that roto the talent).\r2. Press Analyze.\r3. Warp: Space / Time Warp Amount, Edges. View: Difference to check.\rDocs: press Open Docs.\rJean Delaunay",
+                  "jd_4Dwarper %d.%d.%d by Jean Delaunay\rConforms a source pass to this layer in time and space.\r1. Setup: Source Layer, Ignore Layers.\r2. Analyze.\r3. Warp and View: Difference to check.\rGuide: Open Docs.",
                   W4D_MAJOR_VERSION, W4D_MINOR_VERSION, W4D_BUG_VERSION);
     return PF_Err_NONE;
 }
@@ -189,7 +189,7 @@ static PF_Err ParamsSetup(PF_InData* in_data, PF_OutData* out_data, PF_ParamDef*
     AEFX_CLR_STRUCT(def); PF_ADD_LAYER("Source Layer", PF_LayerDefault_NONE, D_SOURCE);
     AEFX_CLR_STRUCT(def); PF_ADD_LAYER("Target Ignore Layer", PF_LayerDefault_NONE, D_MASK);
     AEFX_CLR_STRUCT(def); PF_ADD_LAYER("Source Ignore Layer", PF_LayerDefault_NONE, D_SRC_MASK);
-    AEFX_CLR_STRUCT(def); PF_ADD_POPUP("Ignore Layers Use", 2, MASKCH_LUMA, "Luma (white = ignore)|Alpha (opaque = ignore)", D_MASK_CHANNEL);
+    AEFX_CLR_STRUCT(def); PF_ADD_POPUP("Ignore Layers Use", 2, MASKCH_LUMA, "Luma|Alpha", D_MASK_CHANNEL);
     AEFX_CLR_STRUCT(def); PF_ADD_SLIDER("Ignore Mask Grow (px)", 0, 400, 0, 100, 24, D_MASK_GROW);
     AEFX_CLR_STRUCT(def); PF_END_TOPIC(D_SETUP_END);
     AEFX_CLR_STRUCT(def); PF_ADD_BUTTON("Analysis", "Analyze", 0, PF_ParamFlag_SUPERVISE, D_ANALYZE);
@@ -204,25 +204,25 @@ static PF_Err ParamsSetup(PF_InData* in_data, PF_OutData* out_data, PF_ParamDef*
     AEFX_CLR_STRUCT(def); PF_ADD_FLOAT_SLIDERX("Time Warp Amount", 0, 100, 0, 100, 100, 1, PF_ValueDisplayFlag_PERCENT, 0, D_TIME_AMT);
     // Transparent by default (0.3.1): where the source take has no pixels nothing is invented. Extend smears the border.
     AEFX_CLR_STRUCT(def); PF_ADD_POPUP("Edges", 3, EDGES_TRANSPARENT, "Extend Source Edge|Transparent|Show Target", D_EDGES);
-    AEFX_CLR_STRUCT(def); PF_ADD_CHECKBOX("Blend Neighbour Frames", "", FALSE, 0, D_BLEND);
+    AEFX_CLR_STRUCT(def); PF_ADD_CHECKBOX("Blend Frames", "", FALSE, 0, D_BLEND);
     AEFX_CLR_STRUCT(def); PF_END_TOPIC(D_WARP_END);
     AEFX_CLR_STRUCT(def); PF_ADD_POPUP("View", 5, VIEW_RESULT, "Result|Difference (exposure matched)|50% Mix|Difference (plain)|Ignored Zones", D_VIEW);
     // Advanced: analysis settings; the defaults fit most shots. Starts collapsed.
     AEFX_CLR_STRUCT(def); def.flags = PF_ParamFlag_START_COLLAPSED; PF_ADD_TOPIC("Advanced", D_ADV_START);
     AEFX_CLR_STRUCT(def); PF_ADD_POPUP("Solve", 3, MODE_BOTH, "Time + Space|Space only|Time only", D_MODE);
-    AEFX_CLR_STRUCT(def); PF_ADD_SLIDER("Time Search Range (frames)", 0, 30, 0, 16, 8, D_RANGE);
+    AEFX_CLR_STRUCT(def); PF_ADD_SLIDER("Search Range (fr)", 0, 30, 0, 16, 8, D_RANGE);
     AEFX_CLR_STRUCT(def); PF_ADD_SLIDER("Analysis Width (px)", 160, 4096, 320, 1920, 640, D_AWIDTH);
     AEFX_CLR_STRUCT(def); PF_ADD_CHECKBOX("Local Warp", "", TRUE, 0, D_LOCAL);
-    AEFX_CLR_STRUCT(def); PF_ADD_SLIDER("Local Warp Smoothness (%)", 0, 100, 0, 100, 25, D_SMOOTH);
+    AEFX_CLR_STRUCT(def); PF_ADD_SLIDER("Local Warp Smoothness", 0, 100, 0, 100, 25, D_SMOOTH);
     // Analysis region: only the rectangle between these two points is measured (default = whole frame)
-    AEFX_CLR_STRUCT(def); PF_ADD_POINT("Analysis Region Top Left", 0, 0, FALSE, D_REGION_TL);
-    AEFX_CLR_STRUCT(def); PF_ADD_POINT("Analysis Region Bottom Right", 100, 100, FALSE, D_REGION_BR);
+    AEFX_CLR_STRUCT(def); PF_ADD_POINT("Region Top Left", 0, 0, FALSE, D_REGION_TL);
+    AEFX_CLR_STRUCT(def); PF_ADD_POINT("Region Bottom Right", 100, 100, FALSE, D_REGION_BR);
     AEFX_CLR_STRUCT(def); PF_ADD_CHECKBOX("Auto Ignore Changes", "", FALSE, PF_ParamFlag_CANNOT_TIME_VARY, D_AUTO);
     AEFX_CLR_STRUCT(def); PF_ADD_CHECKBOX("Hold Time After Frame", "", FALSE, 0, D_HOLD_ON);
     AEFX_CLR_STRUCT(def); PF_ADD_SLIDER("Hold From Layer Frame", 0, 100000, 0, 500, 0, D_HOLD_FRAME);
     AEFX_CLR_STRUCT(def); PF_ADD_FLOAT_SLIDERX("Perspective Stiffness", 0, 20, 0, 4, 1, 2, PF_ValueDisplayFlag_NONE, 0, D_STIFF_P);
     AEFX_CLR_STRUCT(def); PF_ADD_FLOAT_SLIDERX("Scale / Rotation Stiffness", 0, 20, 0, 4, 0.5, 2, PF_ValueDisplayFlag_NONE, 0, D_STIFF_L);
-    AEFX_CLR_STRUCT(def); PF_ADD_CHECKBOX("Use Stiffness With Ignore Layers", "", FALSE, 0, D_STIFF_MASKS);
+    AEFX_CLR_STRUCT(def); PF_ADD_CHECKBOX("Stiffness With Masks", "", FALSE, 0, D_STIFF_MASKS);
     AEFX_CLR_STRUCT(def); PF_ADD_CHECKBOX("Affine Only In Range", "", FALSE, 0, D_AFF_ON);
     AEFX_CLR_STRUCT(def); PF_ADD_SLIDER("Affine From Layer Frame", 0, 100000, 0, 500, 0, D_AFF_FROM);
     AEFX_CLR_STRUCT(def); PF_ADD_SLIDER("Affine To Layer Frame", 0, 100000, 0, 500, 0, D_AFF_TO);
@@ -449,6 +449,7 @@ static const char* AdviceFor(const char* reason) {
         {"could not read frames", "check the layers render, then Analyze"},
         {"out of memory", "lower Analysis Width (Advanced) or trim the layer"},
         {"no frame duration", "use footage with a frame rate"},
+        {"ignore layer covers the frame", "precompose the Ignore Layer (a masked layer is read without its masks)"},
     };
     for (auto& e : t) if (std::strcmp(reason, e.r) == 0) return e.a;
     return "press Analyze again";
@@ -584,6 +585,18 @@ static PF_Err Analyze(PF_InData* in_data, PF_OutData* out_data, PF_ParamDef* par
         for (int i = 0; i < nS; ++i) MKS[i] = MKSr[i].w == aw && MKSr[i].h == ah ? w4d::user_mask(MKSr[i], grow) : moco::Image(aw, ah, 0.f);
     }
     MKr.clear(); MKSr.clear();
+    {   // 0.3.5: AE gives an effect a layer's SOURCE, without its masks: a masked solid used as an Ignore Layer comes in
+        // all white and would ignore the whole frame. Fail with what to do when the median frame is > 90 % ignored.
+        auto mostly = [&](const std::vector<moco::Image>& v, int lo) {
+            std::vector<double> f;
+            for (int i = lo; i < int(v.size()); ++i) if (v[i].w) { double a = 0; for (float x : v[i].p) a += x > 0.5f; f.push_back(a / v[i].p.size()); }
+            if (f.empty()) return false;
+            std::nth_element(f.begin(), f.begin() + f.size() / 2, f.end());
+            return f[f.size() / 2] > 0.9;
+        };
+        if (use_t && !region && mostly(MK, 0)) { prog.close(); return fail("ignore layer covers the frame", "jd_4Dwarper: the Target Ignore Layer ignores more than 90 % of the frame. If it is a masked solid or shape, precompose it (effects see a layer without its masks)."); }
+        if (use_s && mostly(MKS, s_lo)) { prog.close(); return fail("ignore layer covers the frame", "jd_4Dwarper: the Source Ignore Layer ignores more than 90 % of the frame. If it is a masked solid or shape, precompose it (effects see a layer without its masks)."); }
+    }
     const std::string dump = DumpDir();
     if (!dump.empty()) {
         for (int i = 0; i < n; ++i) {
@@ -725,7 +738,7 @@ static PF_Err DrawBanner(PF_InData* in_data, PF_OutData* out_data, PF_ParamDef* 
 
     // Plain states (0.3.3): Not analysed / Ready / Needs re-analysis / Failed, each with what to do.
     // (Analysing n % shows in the progress dialog: the comp view cannot redraw while Analyze runs.)
-    char text[160];
+    char text[200];
     DRAWBOT_ColorRGBA col; col.alpha = 0.92f;
     auto set = [&](float r, float g, float b) { col.red = r; col.green = g; col.blue = b; };
     if (old) { set(0.85f, 0.45f, 0.05f); std::snprintf(text, sizeof(text), "jd_4Dwarper: needs re-analysis (made by an older version). Press Analyze."); }
@@ -734,8 +747,9 @@ static PF_Err DrawBanner(PF_InData* in_data, PF_OutData* out_data, PF_ParamDef* 
         set(0.13f, 0.55f, 0.25f);
         int hs = 0, he = 0;
         if (std::sscanf(reason, "held %d %d", &hs, &he) == 2 && hs + he > 0)
-            std::snprintf(text, sizeof(text), "jd_4Dwarper: ready. %d frames, time offset %+.1f to %+.1f frames. Held the %s source frame for %d frames.",
-                          frames, omin, omax, he ? "last" : "first", he ? he : hs);
+            set(0.72f, 0.56f, 0.06f),   // amber: ready, with a warning
+            std::snprintf(text, sizeof(text), "jd_4Dwarper: ready. %d frames, offset %+.1f to %+.1f. Warning: the %s %d frames need source frames past the Source Layer's %s point (held). Check them.",
+                          frames, omin, omax, he ? "last" : "first", he ? he : hs, he ? "out" : "in");
         else std::snprintf(text, sizeof(text), "jd_4Dwarper: ready. %d frames, time offset %+.1f to %+.1f frames.", frames, omin, omax);
     }
     else if (status == w4d::kFailed) { set(0.80f, 0.14f, 0.14f); std::snprintf(text, sizeof(text), "jd_4Dwarper: failed (%s): %s.", reason[0] ? reason : "unknown", AdviceFor(reason)); }
@@ -760,8 +774,8 @@ static PF_Err DrawBanner(PF_InData* in_data, PF_OutData* out_data, PF_ParamDef* 
             DRAWBOT_ColorRGBA white; white.red = white.green = white.blue = white.alpha = 1.f;
             db.supplier_suiteP->NewBrush(sup, &white, &brush);
             if (font && brush) {
-                DRAWBOT_UTF16Char u[160]; size_t i = 0;
-                for (; text[i] && i < 159; ++i) u[i] = (DRAWBOT_UTF16Char)(unsigned char)text[i];
+                DRAWBOT_UTF16Char u[200]; size_t i = 0;
+                for (; text[i] && i < 199; ++i) u[i] = (DRAWBOT_UTF16Char)(unsigned char)text[i];
                 u[i] = 0;
                 DRAWBOT_PointF32 o; o.x = x0 + 10.f; o.y = y + 17.f;
                 db.surface_suiteP->DrawString(surf, brush, font, u, &o, kDRAWBOT_TextAlignment_Default, kDRAWBOT_TextTruncation_None, 0.f);

@@ -1,6 +1,8 @@
 #include "align_core.h"
 #include <cmath>
 #include <algorithm>
+#include <atomic>
+#include <chrono>
 
 namespace moco {
 
@@ -127,7 +129,10 @@ static bool solve(std::vector<double>& A, std::vector<double>& b, int n) {  // G
   return true;
 }
 
+std::atomic<long long> g_prep_ns{0}, g_fit_ns{0}, g_fit_calls{0};   // 0.3.5 speed probe (W4D_TIMING)
 SpaceResult align_space(const Image& target, const Image& source, const H3& init, const SpaceOptions& o) {
+  const auto t_in = std::chrono::steady_clock::now();
+  struct Probe { std::chrono::steady_clock::time_point t; ~Probe() { g_fit_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - t).count(); ++g_fit_calls; } } probe{t_in};
   const int w0 = target.w, h0 = target.h;
   std::vector<Image> T{normalize_local(target, o.norm_radius)}, S{normalize_local(source, o.norm_radius)};
   std::vector<Image> M;
@@ -139,6 +144,7 @@ SpaceResult align_space(const Image& target, const Image& source, const H3& init
     if (o.ignore_mask) M.push_back(downsample2(M.back()));
     if (o.source_ignore) MS.push_back(downsample2(MS.back()));
   }
+  g_prep_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - t_in).count();
   // Work on Hn: normalised target -> normalised source.
   H3 N0 = norm_of_level(w0, h0, 0);
   H3 Hn = N0 * init * N0.inverse();
@@ -159,9 +165,11 @@ SpaceResult align_space(const Image& target, const Image& source, const H3& init
     for (int it = 0; it < o.iters; ++it) {
       // robust scale from previous residuals: first pass computes errors
       std::vector<double> A(n * n, 0.0), b(n, 0.0);
-      std::vector<float> errs; errs.reserve(size_t(t.w) * t.h);
+      // 0.3.5 speed: per-thread buffers reused across iterations and calls (a fresh 15 MB buffer per iteration cost
+      // page faults); same values, same order, so the results are bit-identical.
       struct Px { float e, gx, gy; double u, v, vx, vy, C; };
-      std::vector<Px> px; px.reserve(size_t(t.w) * t.h);
+      static thread_local std::vector<float> errs; errs.clear(); errs.reserve(size_t(t.w) * t.h);
+      static thread_local std::vector<Px> px; px.clear(); px.reserve(size_t(t.w) * t.h);
       for (int y = 1; y < t.h - 1; ++y)
         for (int x = 1; x < t.w - 1; ++x) {
           if (o.ignore_mask && M[L].at(x, y) > 0.5f) continue;
@@ -276,4 +284,7 @@ std::vector<double> align_time(int nT, int nS, const std::function<const Image&(
 
 }  // namespace moco
 
+#include <chrono>
+#include <cstdio>
+#include <cstdlib>
 #include "align_shot.inc"

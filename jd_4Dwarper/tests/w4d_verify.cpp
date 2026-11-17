@@ -97,8 +97,21 @@ int main(int argc, char** argv) {
   if (argc < 6) { std::fprintf(stderr, "usage: w4d_verify <target> <source> <target masks> <source masks> <records.json> [--trust-end N] [--affine a,b]\n"); return 2; }
   Gdiplus::GdiplusStartupInput gsi; ULONG_PTR tok = 0;
   Gdiplus::GdiplusStartup(&tok, &gsi, nullptr);
+  {   // 0.3.5: opt out of Windows power throttling (EcoQoS). With nobody at the screen Windows runs background
+      // processes on the efficiency cores at low clock (3.5x slower here), which makes timings meaningless. After
+      // Effects' Analyze runs in the foreground and is not throttled.
+    PROCESS_POWER_THROTTLING_STATE pt = {};
+    pt.Version = PROCESS_POWER_THROTTLING_CURRENT_VERSION;
+    pt.ControlMask = PROCESS_POWER_THROTTLING_EXECUTION_SPEED;
+    pt.StateMask = 0;   // = never throttle execution speed
+    SetProcessInformation(GetCurrentProcess(), ProcessPowerThrottling, &pt, sizeof(pt));
+  }
   const fs::path tdir = argv[1], sdir = argv[2], tm = argv[3], sm = argv[4], ref = argv[5];
   w4d::Settings st;   // the effect's defaults
+  int cstride = -1;   // --cand-stride
+  double tsmooth = -1;   // --time-smooth: override ShotOptions::time_smooth
+  int conf = -1, conf_refine = -1; double conf_set = -1, conf_sharp = -1;   // --confidence / --conf-refine / --conf-set / --conf-sharp
+  std::string dump_csv;   // --dump <csv>: per frame src_time, H, mask shares and the time candidate scores
   double noise = 0;     // --noise L: add uniform noise of +-L/255 to the analysed luma (sensitivity to decode differences)
   int src_frames = 0;   // --source-frames N: only source frames 0..N-1 (a source out point, as the effect's in/out clamp)
   bool stiff = false;   // --stiffness 1: apply the stiffness prior although masks are given (0.3.0 behaviour)
@@ -109,6 +122,13 @@ int main(int argc, char** argv) {
     if (k == "--stiffness") stiff = std::atoi(argv[i + 1]) != 0;
     if (k == "--source-frames") src_frames = std::atoi(argv[i + 1]);
     if (k == "--noise") noise = std::atof(argv[i + 1]);
+    if (k == "--dump") dump_csv = argv[i + 1];
+    if (k == "--confidence") conf = std::atoi(argv[i + 1]);
+    if (k == "--conf-refine") conf_refine = std::atoi(argv[i + 1]);
+    if (k == "--conf-set") conf_set = std::atof(argv[i + 1]);
+    if (k == "--conf-sharp") conf_sharp = std::atof(argv[i + 1]);
+    if (k == "--time-smooth") tsmooth = std::atof(argv[i + 1]);
+    if (k == "--cand-stride") cstride = std::atoi(argv[i + 1]);
   }
   unsigned hc = std::thread::hardware_concurrency();
   st.threads = int(std::max(1u, hc > 2 ? hc - 2 : 1u));
@@ -147,12 +167,19 @@ int main(int argc, char** argv) {
   if (stiff) st.stiffness_with_masks = true;
   ShotOptions o = w4d::to_options(st, aw, any_mask);   // as the effect: with masks the stiffness prior is not applied
   o.ignore = [&](int t) -> const Image* { return &MK[t]; };
+  if (conf >= 0) o.confidence = conf != 0;
+  if (tsmooth >= 0) o.time_smooth = tsmooth;
+  if (cstride > 0) o.cand_stride = cstride;
+  if (conf_refine >= 0) o.conf_refine = conf_refine != 0;
+  if (conf_set >= 0) o.conf_min_set = conf_set;
+  if (conf_sharp >= 0) o.conf_min_sharp = conf_sharp;
   o.ignore_source = [&](int t) -> const Image* { return &MKS[t]; };
   const auto t0 = std::chrono::steady_clock::now();
   o.ignore_source = [&](int t) -> const Image* { return t >= 0 && t < nS ? &MKS[t] : nullptr; };
   ShotResult R = align_shot(n, nS, [&](int i) -> const Image& { return T[i]; }, [&](int i) -> const Image& { return S[std::min(i, nS - 1)]; }, o);
   const double secs = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
   std::vector<unsigned char> blob = w4d::make_blob(R, n, nS, 0.0, 1.0 / 25, st.mode);
+  std::printf("confidence %s: %d frames interpolated\n", o.confidence ? "on" : "off", R.interpolated);
   {
     std::vector<double> o2(n); for (int t = 0; t < n; ++t) o2[t] = R.src_time[t] - t;
     std::vector<double> so = o2; std::sort(so.begin(), so.end());
@@ -193,6 +220,23 @@ int main(int argc, char** argv) {
       for (size_t i = 0; i < R.grid_a[size_t(t)].size(); ++i)
         dab = std::max(dab, double(std::max(std::fabs(fa[i] - R.grid_a[size_t(t)][i]), std::fabs(fb[i] - R.grid_b[size_t(t)][i]))));
   }
+  if (!dump_csv.empty())
+    if (FILE* f = std::fopen(dump_csv.c_str(), "w")) {
+      std::fprintf(f, "t,src,mk,mks");
+      for (int i = 0; i < 9; ++i) std::fprintf(f, ",h%d", i);
+      const int nc = R.time_scores.empty() ? 0 : int(R.time_scores[0].size());
+      for (int i = 0; i < nc; ++i) std::fprintf(f, ",c%d", i);
+      std::fprintf(f, "\n");
+      for (int t = 0; t < n; ++t) {
+        double a = 0, b = 0; for (float v : MK[t].p) a += v; for (float v : MKS[std::min(t, nS - 1)].p) b += v;
+        std::fprintf(f, "%d,%.5f,%.4f,%.4f", t, R.src_time[t], a / MK[t].p.size(), b / MKS[0].p.size());
+        const w4d::FrameRecord* r = w4d::record(blob.data(), uint32_t(t));
+        for (int i = 0; i < 9; ++i) std::fprintf(f, ",%.9g", r->Hn[i]);
+        for (int i = 0; i < nc; ++i) std::fprintf(f, ",%.6g", R.time_scores[t][i]);
+        std::fprintf(f, "\n");
+      }
+      std::fclose(f);
+    }
   const bool ok = !bad && dt < 2e-4 && dh < 0.01 && df < 0.01 && dab == 0.0;
   std::printf("w4d_verify: %d frames %dx%d, analysis %dx%d (1/%d), mask grow %d px at analysis size, solve %.1f s, threads %d\n",
               n, W, H, aw, ah, k, grow, secs, st.threads);

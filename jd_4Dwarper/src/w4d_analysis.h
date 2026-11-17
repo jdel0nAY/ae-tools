@@ -29,6 +29,9 @@ struct Settings {
   bool stiffness_with_masks = false;
   int affine_lo = 0, affine_hi = -1;   // affine-only frame range (record indices); off when lo > hi
   int mask_grow_px = 24;         // ignore masks are grown by this many FULL-resolution pixels
+  // 0.3.5 speed: time candidates fitted on every 2nd frame (the frames between: interpolated scores + the 5
+  // candidates around the best really fitted). Judge 3 (r19): median 0.212 / p95 1.92 / same 5 bad frames as r17.
+  int cand_stride = 2;
   int threads = 1;
 };
 
@@ -68,6 +71,7 @@ inline moco::ShotOptions to_options(const Settings& s, int aw, bool have_masks =
   o.time_parallax = s.time_parallax;
   if (s.grid_w > 1 && s.grid_h > 1) { o.grid_w = s.grid_w; o.grid_h = s.grid_h; }
   o.grid_smooth = s.grid_smooth;
+  o.cand_stride = std::max(1, s.cand_stride);
   o.time_trust_end = s.time_trust_end;
   const bool relax = have_masks && !s.stiffness_with_masks;
   o.prior_persp = relax ? 0.0 : s.prior_persp;

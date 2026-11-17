@@ -2,6 +2,17 @@
 
 All versions are test builds for After Effects 2026 (Windows, x64).
 
+## 0.3.5 (18 Nov 2026): faster, clearer panel
+- **Faster Analyze**: about 50 seconds for 250 HD frames on a 24-thread CPU (0.3.4: about 63). Same quality on the
+  test shot (judge 3: median 0.212 px, p95 1.92 px, the same frames above 3 px).
+- **Shorter control names**, so they fit at the default panel width: Search Range (fr), Region Top Left / Bottom
+  Right, Stiffness With Masks, Blend Frames; Ignore Layers Use shows Luma / Alpha. Projects keep their values.
+- **The menu shows the version** (jd_4Dwarper 0.3.5), like the other JD tools.
+- **Amber banner** when the first or last frames need source frames past the Source Layer's in or out point.
+- **Clear failure** when an Ignore Layer ignores almost the whole frame (a masked solid read without its masks:
+  precompose it).
+- **About** text fits in its box.
+
 ## 0.3.4 (17 Nov 2026): renamed jd_4Dwarper
 - The effect is now **jd_4Dwarper** (menu, panel, banner, messages) and the file `jd_4Dwarper.aex`. Copy it into any
   folder under `Plug-ins` and remove the old `4Dwarper.aex`.

@@ -293,10 +293,15 @@ static void tension_fix(const Image& T, const Image& S, const H3& H, const Image
   if (n_fixed) *n_fixed = nx;
 }
 
+// 0.3.5: phase timings to stderr when the environment variable W4D_TIMING is set (speed work).
+#define W4D_PHASE(name) do { if (w4d_timing) { auto now_ = std::chrono::steady_clock::now(); \
+  std::fprintf(stderr, "  phase %-18s %6.2f s\n", name, std::chrono::duration<double>(now_ - w4d_t0).count()); w4d_t0 = now_; } } while (0)
 ShotResult align_shot(int nT, int nS, const std::function<const Image&(int)>& getT,
                       const std::function<const Image&(int)>& getS, const ShotOptions& o) {
   ShotResult R;
   const int w = getT(0).w, h = getT(0).h;
+  const bool w4d_timing = std::getenv("W4D_TIMING") != nullptr;
+  auto w4d_t0 = std::chrono::steady_clock::now();
   // 0) coarse integer offset: SSD of small lighting-normalised frames
   {
     const int Lc = 3;
@@ -323,6 +328,7 @@ ShotResult align_shot(int nT, int nS, const std::function<const Image&(int)>& ge
     }
   }
   const int d0 = R.coarse_offset;
+  W4D_PHASE("0 coarse");
   // 0b) Parallax-sensitive time score (for moves with depth, e.g. a dolly, and for offsets that drift by frames
   // over the shot): for every candidate source frame, fit a homography at reduced size and keep the residual it
   // leaves. At the right time one homography explains all depths; at a wrong time the near structure cannot
@@ -351,7 +357,9 @@ ShotResult align_shot(int nT, int nS, const std::function<const Image&(int)>& ge
     parallel_for(nT + nS, o.threads, [&](int i) {
       if (i < nT) tt[i] = downsample2(downsample2(tq[i])); else st[i - nT] = downsample2(downsample2(sq[i - nT]));
     }, nullptr, 0, 1);
+    const int cstride = std::max(1, o.cand_stride);   // 0.3.5 speed option: candidates on every cstride-th frame
     if (!parallel_for(nT, o.threads, [&](int t) {
+          if (cstride > 1 && t % cstride != 0 && t != nT - 1) return;   // filled from the neighbours below
           SpaceOptions so = o.space; so.levels = 3; so.iters = 12; so.norm_radius = std::max(3, o.space.norm_radius >> (q > 1 ? 1 : 0));
           so.ignore_mask = mq[t].w ? &mq[t] : nullptr;
           const int wq = tq[t].w, hq = tq[t].h, wt = tt[t].w, ht = tt[t].h;
@@ -388,6 +396,41 @@ ShotResult align_shot(int nT, int nS, const std::function<const Image&(int)>& ge
           prev = h0;
           for (int oo = o0 - 1; oo >= -Rg && t + oo >= 0; --oo) prev = fit(oo, prev);
         }, o.progress, 0, 2 * nT + nS)) { R.cancelled = true; return R; }
+    if (cstride > 1)   // frames between measured ones: scores interpolated linearly, fit starts from the frame before
+      for (int t = 0; t < nT; ++t) {
+        if (t % cstride == 0 || t == nT - 1) continue;
+        const int a = t - t % cstride, b = std::min(a + cstride, nT - 1);
+        const double fb = double(t - a) / double(b - a);
+        for (int i = 0; i < nc; ++i) {
+          const double ca = cres[a][i], cb = cres[b][i];
+          cres[t][i] = (ca >= 0 && cb >= 0) ? (1 - fb) * ca + fb * cb : (ca >= 0 ? ca : cb);
+          cresH[t][i] = cres[a][i] >= 0 ? cresH[a][i] : cresH[b][i];
+        }
+        // a candidate past the source end for this frame does not exist, whatever the neighbours had
+        for (int i = 0; i < nc; ++i) { const int sidx = t + i - Rg; if (sidx < 0 || sidx >= nS) cres[t][i] = -1.0; }
+      }
+    if (cstride > 1) {   // ...but the candidates near the neighbours' best are really fitted (5 fits instead of 17)
+      std::vector<int> todo;
+      for (int t = 0; t < nT; ++t) if (t % cstride != 0 && t != nT - 1) todo.push_back(t);
+      parallel_for(int(todo.size()), o.threads, [&](int qi) {
+        const int t = todo[qi];
+        int ib = -1; for (int i = 0; i < nc; ++i) if (cres[t][i] >= 0 && (ib < 0 || cres[t][i] < cres[t][ib])) ib = i;
+        if (ib < 0) return;
+        SpaceOptions so = o.space; so.levels = 3; so.iters = 12; so.norm_radius = std::max(3, o.space.norm_radius >> (q > 1 ? 1 : 0));
+        so.ignore_mask = mq[t].w ? &mq[t] : nullptr;
+        const int wq = tq[t].w, hq = tq[t].h;
+        H3 prev = cresH[t][ib];
+        for (int d = 0; d <= 2; ++d)
+          for (int sg : {1, -1}) {
+            if (d == 0 && sg < 0) continue;
+            const int i = ib + sg * d, oo = i - Rg;
+            if (i < 0 || i >= nc || t + oo < 0 || t + oo >= nS) continue;
+            SpaceOptions s1 = so; s1.source_ignore = mqs[t + oo].w ? &mqs[t + oo] : nullptr;
+            SpaceResult r = align_space(tq[t], sq[t + oo], from_normalized(d == 0 ? prev : cresH[t][i], wq, hq), s1);
+            cres[t][i] = r.residual; cresH[t][i] = to_normalized(r.H, wq, hq);
+          }
+      }, nullptr, 0, 1);
+    }
     // base offset per frame: a path through the residual scores that may change by at most one frame per frame
     // and pays for every change (two motion-control passes drift slowly; single frames must not jump)
     {
@@ -424,6 +467,7 @@ ShotResult align_shot(int nT, int nS, const std::function<const Image&(int)>& ge
     }
   }
   auto ex = [&](int k, double tj) { return tj + (d0v[k] - d0); };   // exponent of M_k for frame k's own base offset
+  W4D_PHASE("0b candidates");
   // 1) measurements: P_t (target t -> source t+d0v[t]) and M_t (target t -> target t+1)
   std::vector<H3> P(nT), M(nT);
   std::vector<char> ok(nT, 0);
@@ -467,6 +511,7 @@ ShotResult align_shot(int nT, int nS, const std::function<const Image&(int)>& ge
         }
       }, o.progress, nT + nS, 2 * nT + nS)) { R.cancelled = true; return R; }
   if (nT > 1) M[nT - 1] = M[nT - 2];
+  W4D_PHASE("1 P/M fits");
   // 2) one tau and one H for the shot: scan tau, H = mean of P_t * M_t^-tau, keep the best fit
   auto shotH = [&](double tau, double* err) {
     H3 a; for (double& v : a.m) v = 0; int c = 0;
@@ -594,6 +639,42 @@ ShotResult align_shot(int nT, int nS, const std::function<const Image&(int)>& ge
       R.Hf[t] = a;
     }
   }
+  // 0.3.5 confidence (o.confidence): low-confidence frames take their offset from their confident neighbours.
+  R.low_conf.assign(nT, 0);
+  if (o.confidence) {
+    for (int t = 0; t < nT; ++t) {
+      double setshare = 1.0;
+      if (const Image* mk = o.ignore ? o.ignore(t) : nullptr) {
+        double a = 0; for (float v : mk->p) a += v > 0.5f; setshare = 1.0 - a / std::max<size_t>(1, mk->p.size());
+      }
+      double sharp = 1e9;
+      if (!cres.empty()) {
+        const std::vector<double>& c = cres[t];
+        int i0 = -1; for (int i = 0; i < int(c.size()); ++i) if (c[i] >= 0 && (i0 < 0 || c[i] < c[i0])) i0 = i;
+        if (i0 >= 0 && c[i0] > 0) {
+          double m = 1e300; for (int i = 0; i < int(c.size()); ++i) if (c[i] >= 0 && std::abs(i - i0) > 1) m = std::min(m, c[i]);
+          if (m < 1e299) sharp = m / c[i0] - 1.0;
+        }
+      }
+      R.low_conf[t] = setshare < o.conf_min_set || sharp < o.conf_min_sharp;
+    }
+    std::vector<double> off(nT); for (int t = 0; t < nT; ++t) off[t] = R.src_time[t] - t;
+    int prev = -1;
+    for (int t = 0; t <= nT; ++t) {
+      if (t < nT && R.low_conf[t]) continue;
+      // run (prev, t) exclusive are low frames
+      for (int k = prev + 1; k < t; ++k) {
+        double v;
+        if (prev >= 0 && t < nT) v = off[prev] + (off[t] - off[prev]) * double(k - prev) / double(t - prev);
+        else if (prev >= 0) v = off[prev];
+        else if (t < nT) v = off[t];
+        else v = off[k];
+        R.src_time[k] = k + v;
+      }
+      prev = t;
+    }
+    for (char c : R.low_conf) R.interpolated += c;
+  }
   // 0.3.2 (after the motion-model H of step 4, which works with unclamped times): where the solved source time runs past the last source frame (the shot needs source frames the take
   // does not have) the offset is HELD at the last in-range value instead of drifting towards the search limit,
   // and the source time is clamped to the source frames. Same at the start.
@@ -614,6 +695,7 @@ ShotResult align_shot(int nT, int nS, const std::function<const Image&(int)>& ge
     }
     for (int t = 0; t < nT; ++t) R.src_time[t] = std::min(std::max(R.src_time[t], 0.0), hi);
   }
+  W4D_PHASE("2-4 time path");
   // 4b) with the parallax time score: fit the homography DIRECTLY to the two source frames around the solved time
   //     (no extrapolation through the motion model, which is only valid for small steps and one plane).
   //     Ha / Hb let the renderer warp each of the two frames with its own homography before blending.
@@ -629,7 +711,10 @@ ShotResult align_shot(int nT, int nS, const std::function<const Image&(int)>& ge
       H3 hstart = H3::identity();
       { const int i = a0 - t + o.range; if (!cresH.empty() && i >= 0 && i < int(cresH[t].size()) && cres[t][i] >= 0) hstart = from_normalized(cresH[t][i], w, h); }
       so.source_ignore = o.ignore_source ? o.ignore_source(a0) : nullptr;
-      H3 Pa = normed(align_space(getT(t), getS(a0), hstart, so).H);
+      // 0.3.5 speed: when this is exactly the fit of step 1 (same target and source frame, same start, masks and dof,
+      // no auto-ignore pass), reuse its result: identical inputs give the identical homography.
+      const bool same_as_p = ok[t] && !o.auto_ignore && a0 == t + d0v[t] && !(t >= o.dof_range_lo && t <= o.dof_range_hi);
+      H3 Pa = same_as_p ? P[t] : normed(align_space(getT(t), getS(a0), hstart, so).H);
       so.source_ignore = o.ignore_source ? o.ignore_source(a0 + 1) : nullptr;
       H3 Pb = normed(align_space(getT(t), getS(a0 + 1), Pa, so).H);
       R.Ha[t] = Pa; R.Hb[t] = Pb;
@@ -709,6 +794,40 @@ ShotResult align_shot(int nT, int nS, const std::function<const Image&(int)>& ge
       }, nullptr, 0, 1);
       R.Ha = nHa; R.Hb = nHb; R.Hf = nHf; R.temporal_fixed = fixed;
     }
+    // 4c') 0.3.5 confidence: low-confidence frames (not held) take the target-motion prediction from their confident
+    //      neighbour (forward from the frame before a run; backward from the frame after it when the run starts the
+    //      shot); with conf_refine also a fine-level refinement that is rejected if it leaves the prediction.
+    if (o.confidence && R.interpolated > 0) {
+      auto lowfit = [&](int t, const H3& predA, const H3& predB) {
+        if (!o.conf_refine) { R.Ha[t] = predA; R.Hb[t] = predB; }
+        else {
+          const double s = std::min(std::max(R.src_time[t], 0.0), double(nS - 1));
+          const int a0 = std::min(int(std::floor(s)), nS - 2);
+          const Image* mk = o.ignore ? o.ignore(t) : nullptr;
+          SpaceOptions so = o.space; so.ignore_mask = mk; so.levels = std::min(so.levels, 2);
+          so.source_ignore = o.ignore_source ? o.ignore_source(a0) : nullptr;
+          H3 Pa = normed(align_space(getT(t), getS(a0), predA, so).H);
+          so.source_ignore = o.ignore_source ? o.ignore_source(a0 + 1) : nullptr;
+          H3 Pb = normed(align_space(getT(t), getS(a0 + 1), predB, so).H);
+          const double tol2 = (0.005 * w) * (0.005 * w);
+          R.Ha[t] = map_err(Pa, predA, w, h) < tol2 ? Pa : predA;
+          R.Hb[t] = map_err(Pb, predB, w, h) < tol2 ? Pb : predB;
+        }
+        const double s = std::min(std::max(R.src_time[t], 0.0), double(nS - 1));
+        const double f = s - std::min(int(std::floor(s)), nS - 2);
+        for (int i = 0; i < 9; ++i) R.Hf[t].m[i] = (1 - f) * R.Ha[t].m[i] + f * R.Hb[t].m[i];
+      };
+      // a frame's source pair can change between neighbours (a0 differs): the prediction then maps to the other
+      // source frame; step it through the source motion is not available, so the neighbour's pair is reused as is.
+      int t = 0;
+      while (t < nT) {
+        if (!R.low_conf[t] || held[t]) { ++t; continue; }
+        int e = t; while (e + 1 < nT && R.low_conf[e + 1] && !held[e + 1]) ++e;
+        if (t > 0) for (int k = t; k <= e; ++k) lowfit(k, normed(R.Ha[k - 1] * M[k - 1].inverse()), normed(R.Hb[k - 1] * M[k - 1].inverse()));
+        else if (e + 1 < nT) for (int k = e; k >= t; --k) lowfit(k, normed(R.Ha[k + 1] * M[k]), normed(R.Hb[k + 1] * M[k]));
+        t = e + 1;
+      }
+    }
     // 4d) 0.3.3: held frames (source time held on the first / last source frame). The target keeps moving while the
     //     source frame stays, so the fit is against content up to several frames away and can diverge (run 5:
     //     f241 / f242 off by 1780 / 28181 px). Each one is predicted from its neighbour through the target motion
@@ -737,6 +856,7 @@ ShotResult align_shot(int nT, int nS, const std::function<const Image&(int)>& ge
         guard(t, normed(R.Ha[t + 1] * M[t]), normed(R.Hb[t + 1] * M[t]));
     }
   }
+  W4D_PHASE("4b-4d direct fits");
   // 5) parallax residual field: measured against the nearest whole source frame (no blending), which the model
   //    reaches through Hf * M^(a - src_time); then smoothed over time and stored in normalised units.
   if (o.grid_w > 1 && o.grid_h > 1) {
@@ -827,6 +947,8 @@ ShotResult align_shot(int nT, int nS, const std::function<const Image&(int)>& ge
   R.time_scores = cres;
   for (H3& q : R.Ha) q = to_normalized(q, w, h);
   for (H3& q : R.Hb) q = to_normalized(q, w, h);
+  W4D_PHASE("5 fields");
+  if (w4d_timing) std::fprintf(stderr, "  align_space: %lld calls, %.1f s total (thread time), prep %.1f s\n", (long long)g_fit_calls, g_fit_ns * 1e-9, g_prep_ns * 1e-9);
   return R;
 }
 
