@@ -1,6 +1,6 @@
 # jd_EXRCompiler — specification
 
-Status: 1.0.0 (2026-11-16). This is the design document; user-facing docs are in `README.md` and `panel/README.md`.
+Status: 1.0.0 (2026-11-16). This is the design document; the user guide is `README.md`.
 
 ## 1. Why
 

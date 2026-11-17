@@ -319,7 +319,7 @@ int cmd_pixel(const std::vector<std::string>& a) {
 }
 
 const char* USAGE =
-    "jd_exrc 1.0.0: merge passes into multi-layer EXRs and build Cryptomattes from mattes\n"
+    "jd_exrc 1.0.1: merge passes into multi-layer EXRs and build Cryptomattes from mattes\n"
     "\n"
     "  jd_exrc run job.json [--frames A-B] [--threads N] [--dry-run] [--json-log]\n"
     "  jd_exrc merge -o out.####.exr --layer beauty=beauty.####.exr:RGBA --layer depth=z.####.exr:R->Z\n"

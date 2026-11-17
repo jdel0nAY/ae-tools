@@ -9,3 +9,4 @@ cli/vcpkg_install.log
 panel/undefined
 __pycache__/
 *.pyc
+docs/_raw/

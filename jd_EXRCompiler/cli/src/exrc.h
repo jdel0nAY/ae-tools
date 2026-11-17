@@ -14,7 +14,7 @@
 
 namespace jdexrc {
 
-constexpr const char* VERSION = "1.0.0";
+constexpr const char* VERSION = "1.0.1";
 enum { EXIT_OK = 0, EXIT_CHECK = 1, EXIT_BADJOB = 2, EXIT_IO = 3 };
 
 // ---------------------------------------------------------------- logging (plain or one JSON object per line)
