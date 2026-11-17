@@ -30,7 +30,8 @@ by frame. Talent and anything you roto out are ignored.
 ## Requirements
 - After Effects 2026, Windows 10 or 11, x64.
 - Two passes of the same move, the same pixel size (precompose the source if not).
-- Analyze takes about 50 seconds for 250 HD frames on a 24-thread CPU.
+- Analyze takes about 50 seconds for 250 HD frames on a 24-thread CPU (about 60 the first time, while After
+  Effects reads the footage).
 
 ## Install
 1. Close After Effects.

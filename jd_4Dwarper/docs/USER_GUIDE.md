@@ -46,7 +46,7 @@ banner orange. Press Analyze after changing layers.
 ### Analyze
 | Control | What it does |
 |---|---|
-| Analyze | Runs the analysis over the target layer's in and out points. About 50 seconds for 250 HD frames on a 24-thread CPU. |
+| Analyze | Runs the analysis over the target layer's in and out points. About 50 seconds for 250 HD frames on a 24-thread CPU (about 60 the first time, while After Effects reads the footage). |
 | Clear | Deletes the analysis. The layer then shows unchanged. |
 | Show Status Banner | Shows the banner in the comp and layer views. |
 | About | Version and a quick start. |
