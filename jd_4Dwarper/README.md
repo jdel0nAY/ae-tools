@@ -30,7 +30,7 @@ by frame. Talent and anything you roto out are ignored.
 ## Requirements
 - After Effects 2026, Windows 10 or 11, x64.
 - Two passes of the same move, the same pixel size (precompose the source if not).
-- Analyze takes about a minute for 250 HD frames on a 24-thread CPU.
+- Analyze takes about 50 seconds for 250 HD frames on a 24-thread CPU.
 
 ## Install
 1. Close After Effects.
@@ -47,7 +47,7 @@ by frame. Talent and anything you roto out are ignored.
 5. **View > Difference (exposure matched)**: black means aligned. Set it back to **Result** to render.
 
 Set the Source Layer's out point before any frame that is not real footage (a dissolve, a cut). Where the target
-needs frames past it, the last one is held; the banner says for how many frames.
+needs frames past it, the last one is held; the banner turns amber and says for how many frames.
 
 ## Effect controls
 ![The jd_4Dwarper controls in After Effects, in workflow order](docs/images/panel-guide.png)
@@ -56,7 +56,7 @@ needs frames past it, the last one is held; the banner says for how many frames.
 |---|---|
 | Setup | Source Layer, Target / Source Ignore Layer, Ignore Layers Use, Ignore Mask Grow |
 | Analyze | Analyze, Clear, Show Status Banner, About, Open Docs |
-| Warp | Space Warp Amount, Time Warp Amount, Edges, Blend Neighbour Frames |
+| Warp | Space Warp Amount, Time Warp Amount, Edges, Blend Frames |
 | View | Result, Difference (exposure matched), 50% Mix, Difference (plain), Ignored Zones |
 | Advanced | Solve, search range, analysis width, local warp, region, hold, stiffness, affine range |
 
@@ -86,7 +86,7 @@ build; CMake warns that the effect is skipped. Tests: [docs/TESTING.md](docs/TES
 | `docs/` | User guide, testing, images |
 
 ## Status
-Version 0.3.4, a test build. See the [changelog](CHANGELOG.md) and the
+Version 0.3.5, a test build. See the [changelog](CHANGELOG.md) and the
 [known limits](docs/USER_GUIDE.md#known-limits).
 
 By Jean Delaunay.
